@@ -1,0 +1,477 @@
+#if USE_RFM12B
+#include <RFM12B.h>
+#elif USE_RFM69
+#include <RFM69.h>
+#include <SPI.h>
+#else
+#error "No radio"
+#endif
+#define _LIBRARY  1
+#include "node-debug.h"
+#include "Node.h"
+#include <avr/sleep.h>
+
+#if defined(SERIAL_BAUD)
+#define  DEBUG_POWER  1
+#endif
+
+void NodeClass::initialize(byte nodeid, byte masterid, byte networkid, Command recvcommand)
+{
+  node = nodeid;
+  master = masterid;
+  network = networkid;
+  command = recvcommand;
+  power = false;
+
+  millis_offset = 1000 * 60 * 60; // Offset by a hour by default, so we can use 0 to mean "immediate"
+
+#if defined(RFM12B_h)
+  radio.Initialize(node, RF12_433MHZ, network, 0, 0x7F);
+  radio.Sleep();
+#elif defined(RFM69_h)
+  radio.initialize(RF69_433MHZ, node, network);
+  radio.setPowerLevel(31);
+  radio.setHighPower(true);
+  radio.sleep();
+#endif
+  
+  // Initialize the payload
+  payload.dest = master;
+  payload.net = network;
+  payload.h.msync = 1;
+  payload.h.immediate = 0;
+  payload.h.mseq = random(0, 128);
+  payload.h.aseq = random(0, 128);
+  
+  sample_time = DEFAULT_SAMPLE_TIME;
+  beacon_time = DEFAULT_BEACON_TIME;
+  beacon_ack_time = BEACON_DELAY;
+  ack_time = ACK_DELAY;
+  need_update = true;
+}
+
+void NodeClass::setPowerManagement(bool on)
+{
+#if !defined(DEBUG_POWER)
+  power = on;
+#endif
+}
+
+void NodeClass::setReceiver(bool on)
+{
+  payload.h.immediate = on;
+}
+
+void NodeClass::delay(unsigned long timeout)
+{
+  static const short sleeps[] = {
+    8000, SLEEP_8S, 4000, SLEEP_4S, 2000, SLEEP_2S, 1000, SLEEP_1S, 500, SLEEP_500MS,
+    250, SLEEP_250MS, 120, SLEEP_120MS, 60, SLEEP_60MS, 30, SLEEP_30MS, 15, SLEEP_15MS, 0, 0
+  };
+
+  if (power)
+  {
+    short sleep;
+    for (byte idx = 0; (sleep = sleeps[idx]) > 0; idx += 2)
+    {
+      while (timeout >= sleep)
+      {
+        timeout -= sleep;
+        millis_offset += sleep;
+        LowPower.powerDown((period_t)sleeps[idx + 1], ADC_OFF, BOD_ON);
+      }
+    }
+  }
+
+  if (timeout > 0)
+  {
+    ::delay(timeout);
+  }
+}
+
+void NodeClass::sleep(unsigned long timeout)
+{
+  static const short sleeps[] = {
+    8000, SLEEP_8S, 4000, SLEEP_4S, 2000, SLEEP_2S, 1000, SLEEP_1S, 500, SLEEP_500MS,
+    250, SLEEP_250MS, 120, SLEEP_120MS, 60, SLEEP_60MS, 30, SLEEP_30MS, 15, SLEEP_15MS, 0, 0
+  };
+
+  if (power)
+  {
+    short sleep;
+    for (byte idx = 0; (sleep = sleeps[idx]) > 0; idx += 2)
+    {
+      while (timeout >= sleep)
+      {
+        timeout -= sleep;
+        millis_offset += sleep;
+        LowPower.powerDown((period_t)sleeps[idx + 1], ADC_OFF, BOD_ON);
+      }
+    }
+  }
+}
+
+unsigned long NodeClass::millis(void)
+{
+  return millis_offset + ::millis();
+}
+
+byte* NodeClass::get_payload(void)
+{
+  return payload.p;
+}
+
+bool NodeClass::send(byte length)
+{
+  return communicate(false, length);
+}
+
+bool NodeClass::recvPoll(void)
+{
+  return communicate(true, 0);
+}
+
+bool NodeClass::communicate(bool recv_only, int length)
+{
+#if DEBUGGING
+  if (recv_only)
+  {
+    DEBUGLN("Recv...");
+  }
+  else
+  {
+    DEBUGLN("Send...");
+  }
+#endif
+
+  payload.len = sizeof(payload.h) + length;
+  if (length > 0)
+  {
+    payload.h.mseq++;
+  }
+
+#define  MAX_DELAYS  3
+  static const unsigned long delays[MAX_DELAYS] = { 1, 2, 4 };
+  byte retrans = 0;
+  bool success;
+  bool send_ack;
+  bool wait_for_reply;
+  for (;;)
+  {
+    // Send the payload
+    success = false;
+    send_ack = false;
+
+    if (payload.len == sizeof(payload.h))
+    {
+      // If we aren't sending data, we don't get an ACK
+      wait_for_reply = false;
+    }
+    else
+    {
+      wait_for_reply = true;
+    }
+
+    if (!recv_only)
+    {
+#if DEBUGGING
+      DEBUG("Transmitting ");
+      for (int i = 0; i < payload.len + 3; i++)
+      {
+        byte v = ((byte*)&payload)[i];
+        if (v < 16)
+        {
+          DEBUG("0");
+        }
+        DEBUG(v, HEX);
+      }
+      DEBUGLN();
+      unsigned long sendstart = millis();
+#endif
+      radioSend(payload.dest, &payload.h, payload.len);
+      DEBUG("Send time ");DEBUGLN(millis() - sendstart);
+    }
+
+    unsigned long start = millis();
+    unsigned long wait_time = radioReceiveListen(wait_for_reply, recv_only);
+
+    // Look for an ack until we timeout
+    bool receive_started = false;
+    while (!success && millis() - start < wait_time)
+    {
+      if (!receive_started && radioReceiveStarted())
+      {
+        receive_started = true;
+        beacon_ack_time = (beacon_ack_time * 3 + millis() - start) / 4;
+        DEBUG("Beacon time ");DEBUGLN(beacon_ack_time);
+        wait_time = (ack_time * 12) / 10;
+      }
+
+      // If we received a response which is for us and is valid
+      if (radioReceiveComplete())
+      {
+        radioSleep();
+        receive_started = true;
+        byte datalen = radioDataLen();
+	//DEBUG("Receive completed: "); DEBUGLN(payload.dest);
+        if (!radioReceiveValid(payload.dest))
+        {
+          if (!recv_only)
+          {
+            receive_started = false;
+          }
+        }
+        else if (datalen >= sizeof(Header))
+        {
+          Header* rheader = (Header*)radioData();
+
+          // Adjust ack time
+          ack_time = (ack_time * 3 + millis() - start) / 4;
+
+          DEBUG("Link Time ");DEBUG(millis() - start);DEBUG(" ");DEBUGLN(ack_time);
+          //DEBUG(rheader->aseq);DEBUG(" ");DEBUG(rheader->async);DEBUG(" ");
+          //DEBUG(rheader->mseq);DEBUG(" ");DEBUG(rheader->msync);DEBUG(" ");
+          //DEBUG(radio.GetDataLen());DEBUGLN("");
+
+          // If this ack's our last sequence number, we succeeded
+          if (rheader->aseq == payload.h.mseq)
+          {
+            success = true;
+            payload.h.msync = 0;
+          }
+          if (rheader->mseq == ((payload.h.aseq + 1) & 127))
+          {
+            payload.h.aseq = rheader->mseq;
+            byte len = datalen - sizeof(rheader);
+            if (len > 0)
+            {
+              recv((byte*)(rheader+1), len);
+              send_ack = true;
+            }
+          }
+          // Repeat. If it has data we still need to ack it
+          else if (rheader->mseq == payload.h.aseq)
+          {
+            if (datalen > sizeof(Header))
+            {
+              send_ack = true;
+            }
+          }
+        }
+        else
+        {
+          DEBUGLN("Packet bad");
+        }
+        break;
+      }
+    }
+    radioSleep();
+
+    // If we didn't receive a valid ack
+    if (!success && (wait_for_reply || receive_started))
+    {
+      // And we still have retries, backoff for a bit before retransmission
+      if (retrans == 0)
+      {
+        // When we fail, we double the ack_time to allow more time to receive
+        ack_time = min(MAX_ACK_DELAY, ack_time * 2);
+        beacon_ack_time = min(MAX_BEACON_DELAY, beacon_ack_time * 2);
+      }
+      if (retrans < MAX_DELAYS)
+      {
+        unsigned long timeout = delays[retrans++] * ack_time;
+        timeout = random(timeout, timeout * 2);
+        DEBUG("Retransmit ");DEBUG(timeout);DEBUG(" ");DEBUG(ack_time);DEBUG(" ");DEBUGLN(beacon_ack_time);
+        delay(timeout);
+      }
+      else
+      {
+        // Eventually, we just give up.
+        payload.h.msync = 1;
+        break;
+      }
+    }
+    else
+    {
+      // Success
+      if (send_ack)
+      {
+        // Need to ack message. Remove payload (we sent that) and just send an ack
+        payload.len = sizeof(payload.h);
+        recv_only = false;
+      }
+      else
+      {
+        success = true;
+        break;
+      }
+    }
+  }
+
+#if DEBUGGING
+  if (!recv_only)
+  {
+    DEBUGLN(success ? "Success" : "Failure");
+  }
+#endif
+
+  return success;
+}
+
+void NodeClass::radioSend(uint8_t dest, void* buffer, uint8_t len)
+{
+#if defined(RFM12B_h)
+  radio.Wakeup();
+  radio.SendStart(dest, buffer, len, false, false, power ? 3 : SLEEP_MODE_STANDBY);
+#elif defined(RFM69_h)
+  radio.send(dest, buffer, len, false);
+#endif
+}
+
+unsigned long NodeClass::radioReceiveListen(bool wait_for_reply, bool recv_only)
+{
+#if defined(RFM12B_h)
+  radio.ReceiveStart();
+  return recv_only ? 1 : wait_for_reply ? ack_time * 2 : beacon_ack_time * 2;
+#elif defined(RFM69_h)
+  radio.receiveStart();
+  return recv_only ? 1 : ack_time * 2;
+#endif
+}
+
+bool NodeClass::radioReceiveStarted(void)
+{
+#if defined(RFM12B_h)
+  return radio.ReceiveStarted();
+#elif defined(RFM69_h)
+  return false;
+#endif
+}
+
+bool NodeClass::radioReceiveComplete(void)
+{
+#if defined(RFM12B_h)
+  return radio.ReceiveComplete();
+#elif defined(RFM69_h)
+  return radio.receiveDone();
+#endif
+}
+
+bool NodeClass::radioReceiveValid(uint8_t dest)
+{
+#if defined(RFM12B_h)
+  //DEBUG("Sender: "); DEBUG(radio.GetSender()); DEBUG(" CRCPass: "); DEBUGLN(radio.CRCPass());
+  return (dest == radio.GetSender() && radio.CRCPass());
+#elif defined(RFM69_h)
+  return 1;
+#endif
+}
+
+volatile void* NodeClass::radioData(void)
+{
+#if defined(RFM12B_h)
+  return radio.GetData();
+#elif defined(RFM69_h)
+  return radio.DATA;
+#endif
+}
+
+uint8_t NodeClass::radioDataLen(void)
+{
+#if defined(RFM12B_h)
+  return radio.GetDataLen();
+#elif defined(RFM69_h)
+  return radio.DATALEN;
+#endif
+}
+
+void NodeClass::radioSleep(void)
+{
+  if (power)
+  {
+#if defined(RFM12B_h)
+    radio.Sleep();
+#elif defined(RFM69_h)
+    radio.sleep();
+#endif
+  }
+}
+
+void NodeClass::recv(byte* data, byte len)
+{
+#if DEBUGGING  
+  DEBUG("Receiving ");
+  DEBUGLN(len);
+  for (int i = 0; i < len; i++)
+  {
+    byte v = data[i];
+    if (v < 16)
+    {
+      DEBUG("0");
+    }
+    DEBUG(v, HEX);
+  }
+  DEBUGLN();
+#endif
+  byte* end = data + len;
+  while (data < end)
+  {
+    byte clen = data[0];
+    if (clen >= 1)
+    {
+      long arg = 0;
+      for (byte idx = 1; idx < clen; idx++)
+      {
+        arg = (arg << 8) + (long)data[idx + 1];
+      }
+      switch (data[1])
+      {
+        case KEY_BEACON_TIME:
+          beacon_time = ((unsigned long)arg) * 1000;
+          break;
+       
+        case KEY_SAMPLE_TIME:
+          sample_time = ((unsigned long)arg) * 1000;
+          break;
+          
+        case KEY_STATUS:
+          need_update = true;
+          break;
+
+        default:
+          break;
+      }
+      (*command)(data[1], arg, clen - 2, &data[2]);
+    }
+    data += clen + 1;
+  }
+}
+
+unsigned long NodeClass::beacon_timeout(void)
+{
+  return beacon_time;
+}
+
+unsigned long NodeClass::sample_timeout(void)
+{
+  return sample_time;
+}
+
+bool NodeClass::force_update(bool clear)
+{
+  bool update = need_update;
+  if (clear)
+  {
+    need_update = false;
+  }
+  return update;
+}
+
+bool NodeClass::low_battery(void)
+{
+#if defined(RFM12B_h)
+  return radio.LowBattery();
+#elif defined(RFM69_h)
+  return false;
+#endif
+}
