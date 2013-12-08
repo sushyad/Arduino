@@ -3,7 +3,7 @@
 #include <SPIFlash.h>
 
 #define NODEID      1
-#define NETWORKID   100
+#define NETWORKID   112
 #define FREQUENCY   RF69_433MHZ //Match this with the version of your Moteino! (others: RF69_433MHZ, RF69_868MHZ)
 #define KEY         "xxxxxxxxxxxxxxxx" //has to be same 16 characters/bytes on all nodes, not more not less!
 #define LED         9
@@ -12,24 +12,38 @@
 
 RFM69 radio;
 SPIFlash flash(8, 0xEF30); //EF40 for 16mbit windbond chip
-bool promiscuousMode = false; //set to 'true' to sniff all packets on the same network
+bool promiscuousMode = true; //set to 'true' to sniff all packets on the same network
 
-typedef struct { int nodeId; float kWh; float wlm; long pulseCount;} Payload;
+typedef struct
+{
+  byte mseq:7;
+  byte msync:1;
+  byte aseq:7;
+  byte immediate:1;
+} Header;
 
-typedef struct {		
-  int           nodeId; //store this nodeId
-  unsigned long uptime; //uptime in ms
-  float         temp;   //temperature maybe?
-} Payload1;
+typedef struct
+{
+  Header h;
+  byte p[20];
+} Payload;
+
+typedef void (*Command)(byte cmd, long arg, byte len, byte* raw);
+
+typedef struct { int nodeId; float kWh; float wlm; long pulseCount;} Payload1;
+
 Payload theData;
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
   delay(10);
   radio.initialize(FREQUENCY,NODEID,NETWORKID);
-  //radio.setHighPower(); //uncomment only for RFM69HW!
+  radio.setHighPower(); //uncomment only for RFM69HW!
   //radio.encrypt(KEY);
   radio.promiscuous(promiscuousMode);
+  
+  Serial.println("Initialized");
+    
   char buff[50];
   sprintf(buff, "\nListening at %d Mhz...", FREQUENCY==RF69_433MHZ ? 433 : FREQUENCY==RF69_868MHZ ? 868 : 915);
   Serial.println(buff);
@@ -37,6 +51,44 @@ void setup() {
     Serial.println("SPI Flash Init OK!");
   else
     Serial.println("SPI Flash Init FAIL! (is chip present?)");
+}
+
+static void recv(byte* data, byte len) {
+  byte* end = data + len;
+  while (data < end)
+  {
+    byte clen = data[0];
+    if (clen >= 1)
+    {
+      long arg = 0;
+      for (byte idx = 1; idx < clen; idx++)
+      {
+        arg = (arg << 8) + (long)data[idx + 1];
+      }
+      Serial.print("Arg: "); Serial.println(arg);
+      /*
+      switch (data[1])
+      {
+        case KEY_BEACON_TIME:
+          beacon_time = ((unsigned long)arg) * 1000;
+          break;
+       
+        case KEY_SAMPLE_TIME:
+          sample_time = ((unsigned long)arg) * 1000;
+          break;
+          
+        case KEY_STATUS:
+          need_update = true;
+          break;
+
+        default:
+          break;
+      }
+      */
+      //(*command)(data[1], arg, clen - 2, &data[2]);
+    }
+    data += clen + 1;
+  }      
 }
 
 byte ackCount=0;
@@ -93,25 +145,33 @@ void loop() {
     if (promiscuousMode) {
       Serial.print("to [");Serial.print(radio.TARGETID, DEC);Serial.print("] ");
     }
-	
-    if (radio.DATALEN != sizeof(Payload))
-      Serial.print("Invalid payload received, not matching Payload struct!");
-    else
-    {
-      theData = *(Payload*)radio.DATA; //assume radio.DATA actually contains our struct and not something else
+
+    byte theNodeID = radio.SENDERID;
+    if (radio.DATALEN >= sizeof(Header)) {
+      Header* rheader = (Header*) radio.DATA;
+      byte len = radio.DATALEN - sizeof(rheader);
+      Serial.print("len=");Serial.println(len);
+      recv((byte*)(rheader+1), len);
+    
+      //theData = *(Payload*)radio.DATA; //assume radio.DATA actually contains our struct and not something else
       Serial.print(" nodeId=");
-      Serial.print(theData.nodeId);
-      Serial.print(" kWh=");
-      Serial.print(theData.kWh);
+      Serial.print(theNodeID);
+      //Serial.print(" kWh=");
+      //Serial.print(theData.kWh);
       Serial.print(" pulseCount=");
-      Serial.print(theData.pulseCount);
-      Serial.print(" wlm=");
-      Serial.print(theData.wlm);
+      Serial.print((long) &rheader[2]);
+      //Serial.print(" wlm=");
+      //Serial.print(theData.wlm);
+      
+      rheader->aseq = rheader->mseq;
+      radio.sendACK(rheader, sizeof(Header));
+    } else {
+      Serial.print("Invalid payload received, not matching Payload struct! ");Serial.println(sizeof(Header));
     }
     
     if (radio.ACK_REQUESTED)
     {
-      byte theNodeID = radio.SENDERID;
+      theNodeID = radio.SENDERID;
       radio.sendACK();
       Serial.print(" - ACK sent.");
 
