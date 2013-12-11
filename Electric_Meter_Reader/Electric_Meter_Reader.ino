@@ -24,10 +24,9 @@ volatile unsigned long PulseCounterVolatile = 0; // use volatile for shared vari
 unsigned long PulseCounter = 0;
 float KWH;
 byte Kh = 3.6;
+int power;
 byte PulsesPerKWH = 277.7778;
 volatile unsigned long NOW = 0;
-unsigned long LASTMINUTEMARK = 0;
-unsigned long PULSECOUNTLASTMINUTEMARK = 0; //keeps pulse count at the last minute mark
 
 byte COUNTEREEPROMSLOTS = 10;
 unsigned long COUNTERADDRBASE = 8; //address in EEPROM that points to the first possible slot for a counter
@@ -36,8 +35,8 @@ byte secondCounter = 0;
 
 unsigned long TIMESTAMP_pulse_prev = 0;
 unsigned long TIMESTAMP_pulse_curr = 0;
-int KWHthreshold = 120000;         // KWH will reset after this many MS if no pulses are registered
-int XMIT_Interval = 7000;        // KWHthreshold should be less than 2*XMIT_Interval
+int KWHthreshold = 15000;         // KWH will reset after this many MS if no pulses are registered
+int XMIT_Interval = 6000;        // KWHthreshold should be less than 2*XMIT_Interval
 int pulseAVGInterval = 0;
 int pulsesPerXMITperiod = 0;
 float AVGKW=0;
@@ -66,7 +65,7 @@ void setup(void)
   unsigned long savedCounter = EEPROM_Read_Counter();
   //unsigned long savedCounter = 0;
   if (savedCounter <=0) savedCounter = 1; //avoid division by 0
-  PulseCounterVolatile = PulseCounter = PULSECOUNTLASTMINUTEMARK = savedCounter;
+  PulseCounterVolatile = PulseCounter = savedCounter;
   attachInterrupt(INPUTPIN, pulseCounter, FALLING);
   Timer1.initialize(XMIT_Interval * 1000L);
   Timer1.attachInterrupt(XMIT);
@@ -97,7 +96,6 @@ void XMIT(void)
   tempstr += ((unsigned long)(KWH * 100)) % 100;
 
   //calculate & output KWH
-  AVGKW = pulseAVGInterval > 0 ? 60.0 * 1000 * (1.0/PulsesPerKWH)/(pulseAVGInterval/pulsesPerXMITperiod) : 0;
   pulsesPerXMITperiod = 0;
   pulseAVGInterval = 0;
     
@@ -106,16 +104,14 @@ void XMIT(void)
   if (secondCounter>=60)
   {
     secondCounter=0;
-    float WLM = ((float)(PulseCounter - PULSECOUNTLASTMINUTEMARK)) * Kh ;
-    //emontx.wlm = WLM;
-    PULSECOUNTLASTMINUTEMARK = PulseCounter;
     EEPROM_Write_Counter(PulseCounter);
   }
-
-  //get_update(Node.force_update(true));
-  Node.send(get_update(true));
   
-  Node.sleep(SLEEP_8S);
+  if (secondCounter % 30 == 0)
+  {
+    Node.send(get_update(true));    
+  }
+  //Node.sleep(SLEEP_30 S);
 }
 
 void loop() {}
@@ -133,6 +129,7 @@ static byte get_update(bool force_update)
     last_##K = (V); \
   } \
 } while (0)
+
 #define  KV2(K,V) do { \
   if (force_update || last_##K != (V)) \
   { \
@@ -144,9 +141,24 @@ static byte get_update(bool force_update)
   } \
 } while (0)
 
+#define  KV4(K,V,P) do { \
+  if (force_update || last_##K != (V)) \
+  { \
+    payload[c++] = 5; \
+    payload[c++] = (K); \
+    payload[c++] = ((V) >> 24); \
+    payload[c++] = ((V) >> 16); \
+    payload[c++] = ((V) >> 8); \
+    payload[c++] = (V); \
+    payload[c++] = ((P) >> 8); \
+    payload[c++] = (P); \
+    last_##K = (V); \
+  } \
+} while (0)
+
 #if defined(KEY_ELECTRIC_METER_READING)
   DEBUGLN("About to send meter reading...");
-  KV(KEY_ELECTRIC_METER_READING, PulseCounter);
+  KV4(KEY_ELECTRIC_METER_READING, PulseCounter, power);
 #endif
 
   return c;
@@ -212,7 +224,11 @@ void pulseCounter(void)
   TIMESTAMP_pulse_prev = TIMESTAMP_pulse_curr;
   TIMESTAMP_pulse_curr = NOW;
   
-  if (TIMESTAMP_pulse_curr - TIMESTAMP_pulse_prev > KWHthreshold)
+  long timeElapsed = TIMESTAMP_pulse_curr - TIMESTAMP_pulse_prev;
+  
+  power = (3600 * Kh)/((1.0 * timeElapsed)/1000.0);
+  
+  if (timeElapsed > KWHthreshold)
     //more than 'KWHthreshold' seconds passed since last pulse... resetting KWH
     pulsesPerXMITperiod=pulseAVGInterval=0;
   else
