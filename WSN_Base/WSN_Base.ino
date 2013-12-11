@@ -1,3 +1,5 @@
+#include "config.h"
+#include "debug.h"
 #include <RFM69.h>
 #include <SPI.h>
 #include <SPIFlash.h>
@@ -12,7 +14,7 @@
 
 RFM69 radio;
 SPIFlash flash(8, 0xEF30); //EF40 for 16mbit windbond chip
-bool promiscuousMode = true; //set to 'true' to sniff all packets on the same network
+bool promiscuousMode = false; //set to 'true' to sniff all packets on the same network
 
 typedef struct
 {
@@ -34,6 +36,9 @@ typedef struct { int nodeId; float kWh; float wlm; long pulseCount;} Payload1;
 
 Payload theData;
 
+unsigned long pulseCounter;
+int power;
+
 void setup() {
   Serial.begin(SERIAL_BAUD);
   delay(10);
@@ -53,38 +58,48 @@ void setup() {
     Serial.println("SPI Flash Init FAIL! (is chip present?)");
 }
 
-static void recv(byte* data, byte len) {
+static void recv(byte theNodeID, byte* data, byte len) {
   byte* end = data + len;
   while (data < end)
   {
     byte clen = data[0];
     if (clen >= 1)
     {
-      long arg = 0;
-      for (byte idx = 1; idx < clen; idx++)
-      {
-        arg = (arg << 8) + (long)data[idx + 1];
-      }
-      Serial.print("Arg: "); Serial.println(arg);
-      /*
+      signed long arg = 0;
+      
       switch (data[1])
       {
         case KEY_BEACON_TIME:
-          beacon_time = ((unsigned long)arg) * 1000;
+          //beacon_time = ((unsigned long)arg) * 1000;
           break;
        
         case KEY_SAMPLE_TIME:
-          sample_time = ((unsigned long)arg) * 1000;
+          //sample_time = ((unsigned long)arg) * 1000;
           break;
           
         case KEY_STATUS:
-          need_update = true;
+          //need_update = true;
           break;
 
+        case KEY_ELECTRIC_METER_READING:
+          for (byte idx = 1; idx < 5; idx++)
+          {
+            arg = (arg << 8) + (long)data[idx + 1];
+          }
+          pulseCounter = ((unsigned long) arg);
+
+          for (byte idx = 5; idx < 7; idx++)
+          {
+            arg = (arg << 8) + (long)data[idx + 1];
+          }
+          power = (int) arg;
+          Serial.print("["); Serial.print(theNodeID); Serial.print("] Pulsecount: "); Serial.print(pulseCounter); Serial.print(" Power: "); Serial.println(power);
+          break;
+          
         default:
           break;
       }
-      */
+
       //(*command)(data[1], arg, clen - 2, &data[2]);
     }
     data += clen + 1;
@@ -140,71 +155,27 @@ void loop() {
   if (radio.receiveDone())
   {
     blink(1);
-    Serial.print('[');Serial.print(radio.SENDERID, DEC);Serial.print("] ");
-    Serial.print(" [RX_RSSI:");Serial.print(radio.readRSSI());Serial.print("]");
+    //Serial.print('[');Serial.print(radio.SENDERID, DEC);Serial.print("] ");
+    //Serial.print(" [RX_RSSI:");Serial.print(radio.readRSSI());Serial.print("]");
     if (promiscuousMode) {
-      Serial.print("to [");Serial.print(radio.TARGETID, DEC);Serial.print("] ");
+      //Serial.print("to [");Serial.print(radio.TARGETID, DEC);Serial.print("] ");
     }
 
     byte theNodeID = radio.SENDERID;
     if (radio.DATALEN >= sizeof(Header)) {
       Header* rheader = (Header*) radio.DATA;
       byte len = radio.DATALEN - sizeof(rheader);
-      Serial.print("len=");Serial.println(len);
-      recv((byte*)(rheader+1), len);
-    
-      //theData = *(Payload*)radio.DATA; //assume radio.DATA actually contains our struct and not something else
-      Serial.print(" nodeId=");
-      Serial.print(theNodeID);
-      //Serial.print(" kWh=");
-      //Serial.print(theData.kWh);
-      Serial.print(" pulseCount=");
-      Serial.print((long) &rheader[2]);
-      //Serial.print(" wlm=");
-      //Serial.print(theData.wlm);
-      
+      delay(3); //need this when sending right after reception .. ?
       rheader->aseq = rheader->mseq;
       radio.sendACK(rheader, sizeof(Header));
+      recv(theNodeID, (byte*)(rheader+1), len);
     } else {
-      Serial.print("Invalid payload received, not matching Payload struct! ");Serial.println(sizeof(Header));
+      Serial.print("Invalid payload received, not matching Payload struct! "); Serial.println(sizeof(Header));
     }
-    
-    if (radio.ACK_REQUESTED)
-    {
-      theNodeID = radio.SENDERID;
-      radio.sendACK();
-      Serial.print(" - ACK sent.");
 
-      // When a node requests an ACK, respond to the ACK
-      // and also send a packet requesting an ACK (every 3rd one only)
-      // This way both TX/RX NODE functions are tested on 1 end at the GATEWAY
-      if (ackCount++%3==0)
-      {
-        Serial.print(" Pinging node ");
-        Serial.print(theNodeID);
-        Serial.print(" - ACK...");
-        delay(3); //need this when sending right after reception .. ?
-        if (radio.sendWithRetry(theNodeID, "ACK TEST", 8, 0)) { // 0 = only 1 attempt, no retries
-          Serial.print("ok!");
-          blink(3);
-        }
-        else {
-          Serial.print("nothing");
-          blink(2);          
-        }
-      }
-    }
-    Serial.println();
+    //Serial.println();
     //blink(2);
   }
-}
-
-void Blink(byte PIN, int DELAY_MS)
-{
-  pinMode(PIN, OUTPUT);
-  digitalWrite(PIN,HIGH);
-  delay(DELAY_MS);
-  digitalWrite(PIN,LOW);
 }
 
 static void blink(int cnt){
