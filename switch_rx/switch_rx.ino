@@ -25,8 +25,9 @@
  * buttons is send to the led board, which displays the state.
  */
 
+#include <RF24Network.h>
+#include <RF24.h>
 #include <SPI.h>
-#include "RF24.h"
 #include "printf.h"
 
 //
@@ -37,12 +38,20 @@
 
 RF24 radio(7,3);
 
+// Network uses that radio
+RF24Network network(radio);
+
+// Address of our node
+const uint16_t this_node = 1;
+const uint16_t base_node = 0;
+
+
 // Pins on the remote for buttons
 const uint8_t button_pins[] = { 10, 0 };
 const uint8_t num_button_pins = sizeof(button_pins);
 
 // Pins on the LED board for LED's
-const uint8_t led_pins[] = { 8,9 };
+const uint8_t led_pins[] = { 8, 9 };
 const uint8_t num_led_pins = sizeof(led_pins);
 
 int numOfStateChanges = 0;
@@ -90,7 +99,9 @@ void setup(void)
   // Setup and configure rf radio
   //
 
+  SPI.begin();
   radio.begin();
+  network.begin(/*channel*/ 90, /*node address*/ this_node);
 
   //
   // Open pipes to other nodes for communication
@@ -98,19 +109,19 @@ void setup(void)
 
   // This simple sketch opens a single pipes for these two nodes to communicate
   // back and forth.  One listens on it, the other talks to it.
-  radio.openReadingPipe(1,pipe);
+  //radio.openReadingPipe(1,pipe);
 
   //
   // Start listening
   //
 
-  radio.startListening();
+  //radio.startListening();
 
   //
   // Dump the configuration of the rf unit for debugging
   //
 
-  radio.printDetails();
+  //radio.printDetails();
 
   //
   // Set up buttons / LED's
@@ -143,6 +154,9 @@ void setup(void)
 
 void loop(void)
 {
+  // Pump the network regularly
+  network.update();
+  
   //
   // If the state of any button has changed, send the whole state of
   // all buttons.
@@ -172,35 +186,57 @@ void loop(void)
       }
     }
   }
+  
+  // Is there anything ready for us?
+  while ( network.available() )
+  {
+    // If so, grab it and print it out
+    RF24NetworkHeader header;
+    network.read(header, remote_button_states, num_button_pins);
+    
+    // For each button, if the button now on, then toggle the LED
+    int j = num_led_pins;
+
+    while(j--)
+    {
+      if ( button_pins[j] > 0) {
+        if (remote_button_states[j]) {
+          led_states[j] ^= HIGH;
+          digitalWrite(led_pins[j],led_states[j]);
+        }
+      }
+    }
+  }  
 
   // Try again in a short while
 
   // if there is data ready
-  if ( radio.available() )
-  {
-    // Dump the payloads until we've gotten everything
-    bool done = false;//  if ( !different )
-    while (!done)
-    {
-      // Fetch the payload, and see if this was the last one.
-      done = radio.read( remote_button_states, num_button_pins );
-
-      // Spew it
-      printf("Got buttons\n\r");
-
-      // For each button, if the button now on, then toggle the LED
-      int j = num_led_pins;
-      while(j--)
-      {
-        if ( button_pins[j] > 0) {
-          if (remote_button_states[j]) {
-            led_states[j] ^= HIGH;
-            digitalWrite(led_pins[j],led_states[j]);
-          }
-        }
-      }
-    }
-  }
+//  if ( radio.available() )
+//  {
+//    // Dump the payloads until we've gotten everything
+//    bool done = false;//  if ( !different )
+//    while (!done)
+//    {
+//      // Fetch the payload, and see if this was the last one.
+//      done = radio.read( remote_button_states, num_button_pins + 1);
+//
+//      // Spew it
+//      printf("Got buttons\n\r");
+//
+//      // For each button, if the button now on, then toggle the LED
+//      int j = num_led_pins;
+//
+//      while(j--)
+//      {
+//        if ( button_pins[j] > 0) {
+//          if (remote_button_states[j]) {
+//            led_states[j] ^= HIGH;
+//            digitalWrite(led_pins[j],led_states[j]);
+//          }
+//        }
+//      }
+//    }
+//  }
   
   delay(50);
 }

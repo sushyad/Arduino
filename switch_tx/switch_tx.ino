@@ -25,8 +25,9 @@
  * buttons is send to the led board, which displays the state.
  */
 
+#include <RF24Network.h>
+#include <RF24.h>
 #include <SPI.h>
-#include "RF24.h"
 #include "printf.h"
 
 //
@@ -37,9 +38,12 @@
 
 RF24 radio(9,10);
 
-// sets the role of this unit in hardware.  Connect to GND to be the 'remote' board receiver
-// Leave open to be the 'led' transmitter
-const int role_pin = 0;
+// Network uses that radio
+RF24Network network(radio);
+
+// Address of our node
+const uint16_t this_node = 0;
+const uint16_t other_node = 1;
 
 // Pins on the remote for buttons
 const uint8_t button_pins[] = { 7,8 };
@@ -88,21 +92,6 @@ uint8_t led_states[num_led_pins];
 
 void setup(void)
 {
-  //
-  // Role
-  //
-
-  // set up the role pin
-  pinMode(role_pin, INPUT);
-  digitalWrite(role_pin,HIGH);
-  delay(20); // Just to get a solid reading on the role pin
-
-  // read the address pin, establish our role
-  if ( digitalRead(role_pin) )
-    role = role_remote;
-  else
-    role = role_led;
-
   role = role_remote;
   //
   // Print preamble
@@ -117,7 +106,9 @@ void setup(void)
   // Setup and configure rf radio
   //
 
+  SPI.begin();
   radio.begin();
+  network.begin(/*channel*/ 90, /*node address*/ this_node);
 
   //
   // Open pipes to other nodes for communication
@@ -126,27 +117,27 @@ void setup(void)
   // This simple sketch opens a single pipes for these two nodes to communicate
   // back and forth.  One listens on it, the other talks to it.
 
-  if ( role == role_remote )
-  {
-    radio.openWritingPipe(pipe);
-  }
-  else
-  {
-    radio.openReadingPipe(1,pipe);
-  }
-
-  //
-  // Start listening
-  //
-
-  if ( role == role_led )
-    radio.startListening();
-
-  //
-  // Dump the configuration of the rf unit for debugging
-  //
-
-  radio.printDetails();
+//  if ( role == role_remote )
+//  {
+//    radio.openWritingPipe(pipe);
+//  }
+//  else
+//  {
+//    radio.openReadingPipe(1,pipe);
+//  }
+//
+//  //
+//  // Start listening
+//  //
+//
+//  if ( role == role_led )
+//    radio.startListening();
+//
+//  //
+//  // Dump the configuration of the rf unit for debugging
+//  //
+//
+//  radio.printDetails();
 
   //
   // Set up buttons / LED's
@@ -208,7 +199,9 @@ void loop(void)
     if ( different )
     {
       printf("Now sending...");
-      bool ok = radio.write( button_states, num_button_pins );
+      RF24NetworkHeader header(/*to node*/ other_node);
+      bool ok = network.write(header, button_states, num_button_pins);
+//      bool ok = radio.write( button_states, num_button_pins );
       if (ok)
         printf("ok\n\r");
       else
