@@ -42,8 +42,8 @@ RF24 radio(7,3);
 RF24Network network(radio);
 
 // Address of our node
-const uint16_t this_node = 1;
-const uint16_t base_node = 0;
+const uint16_t this_node = 011;
+const uint16_t base_node = 00;
 
 
 // Pins on the remote for buttons
@@ -154,9 +154,6 @@ void setup(void)
 
 void loop(void)
 {
-  // Pump the network regularly
-  network.update();
-  
   //
   // If the state of any button has changed, send the whole state of
   // all buttons.
@@ -187,26 +184,30 @@ void loop(void)
     }
   }
   
-  // Is there anything ready for us?
-  while ( network.available() )
-  {
-    // If so, grab it and print it out
-    RF24NetworkHeader header;
-    network.read(header, remote_button_states, num_button_pins);
-    
-    // For each button, if the button now on, then toggle the LED
-    int j = num_led_pins;
-
-    while(j--)
+  if (!different) {
+    // Pump the network regularly
+    network.update();
+  
+    // Is there anything ready for us?
+    while ( network.available() )
     {
-      if ( button_pins[j] > 0) {
-        if (remote_button_states[j]) {
-          led_states[j] ^= HIGH;
-          digitalWrite(led_pins[j],led_states[j]);
+      // If so, grab it and print it out
+      RF24NetworkHeader header;
+      network.read(header, remote_button_states, num_button_pins);
+      
+      // For each button, if the button now on, then toggle the LED
+      int j = num_led_pins;
+  
+      while(j--)
+      {
+        if ( button_pins[j] > 0) {
+          if (remote_button_states[j]) {
+            led_states[j] ^= HIGH;
+            digitalWrite(led_pins[j],led_states[j]);
+          }
         }
       }
-    }
-  }  
+    }  
 
   // Try again in a short while
 
@@ -237,7 +238,7 @@ void loop(void)
 //      }
 //    }
 //  }
-  
+  }
   delay(50);
 }
 

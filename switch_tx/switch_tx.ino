@@ -42,8 +42,8 @@ RF24 radio(9,10);
 RF24Network network(radio);
 
 // Address of our node
-const uint16_t this_node = 0;
-const uint16_t other_node = 1;
+const uint16_t this_node = 00;
+const uint16_t other_node = 011;
 
 // Pins on the remote for buttons
 const uint8_t button_pins[] = { 7,8 };
