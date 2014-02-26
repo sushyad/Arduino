@@ -43,7 +43,7 @@ RF24Network network(radio);
 
 // Address of our node
 const uint16_t this_node = 00;
-const uint16_t other_node = 011;
+const uint16_t other_node[] = { 011, 01 };
 
 // Pins on the remote for buttons
 const uint8_t button_pins[] = { 7,8 };
@@ -192,20 +192,15 @@ void loop(void)
       {
         different = true;
         button_states[i] = state;
-      }
-    }
-
-    // Send the state of the buttons to the LED board
-    if ( different )
-    {
-      printf("Now sending...");
-      RF24NetworkHeader header(/*to node*/ other_node);
-      bool ok = network.write(header, button_states, num_button_pins);
-//      bool ok = radio.write( button_states, num_button_pins );
-      if (ok)
-        printf("ok\n\r");
-      else
-        printf("failed\n\r");
+        printf("Now sending...");
+        RF24NetworkHeader header(/*to node*/ other_node[i]);
+        bool ok = network.write(header, button_states+i, 1);
+  //      bool ok = radio.write( button_states, num_button_pins );
+        if (ok)
+          printf("ok\n\r");
+        else
+          printf("failed\n\r");
+        }
     }
 
     // Try again in a short while
