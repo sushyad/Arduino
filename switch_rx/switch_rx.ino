@@ -42,7 +42,7 @@ RF24 radio(7,3);
 RF24Network network(radio);
 
 // Address of our node
-const uint16_t this_node = 01;
+const uint16_t this_node = 011;
 const uint16_t base_node = 00;
 
 
@@ -159,8 +159,14 @@ void stateChange()
     numOfStateChanges = 0;
     led_states[0] ^= HIGH;
     digitalWrite(led_pins[0],led_states[0]);
+
+    RF24NetworkHeader header(/*to node*/ base_node);
+    bool ok = network.write(header, led_states, 1);
+    if (ok)
+      printf("ok\n\r");
+    else
+      printf("failed\n\r");
   }
-  //delayMicroseconds(50);
 }
 
 //

@@ -85,6 +85,7 @@ role_e role;
 
 uint8_t button_states[num_button_pins];
 uint8_t led_states[num_led_pins];
+uint8_t remote_button_state[1];
 
 //
 // Setup
@@ -203,6 +204,17 @@ void loop(void)
         }
     }
 
+    network.update();
+    
+    // Is there anything ready for us?
+    while ( network.available() )
+    {
+      // If so, grab it and print it out
+      RF24NetworkHeader header;
+      network.read(header, remote_button_state, 1);
+      printf("Got button state: %u\n\r", remote_button_state[0]);
+    } 
+    
     // Try again in a short while
     delay(20);
   }
