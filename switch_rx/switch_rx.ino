@@ -28,7 +28,6 @@
 #include <RF24Network.h>
 #include <RF24.h>
 #include <SPI.h>
-#include "printf.h"
 
 //
 // Hardware configuration
@@ -81,20 +80,14 @@ uint8_t button_states[num_button_pins];
 uint8_t remote_button_states[num_button_pins];
 uint8_t led_states[num_led_pins];
 
+unsigned long last_millis;
+
 //
 // Setup
 //
 
 void setup(void)
 {
-  //
-  // Print preamble
-  //
-
-  Serial.begin(9600);
-  printf_begin();
-  printf("\n\rRemote Switch\n\r");
-
   //Attach the interrupt to the input pin and monitor for ANY Change
   attachInterrupt(0, stateChange, CHANGE);
 
@@ -140,12 +133,12 @@ void setup(void)
 //    }
 //  }
 
-  // Turn LED's ON until we start getting keys
+  // Turn LED's OFF until we start getting keys
   int i = num_led_pins;
   while(i--)
   {
     pinMode(led_pins[i],OUTPUT);
-    led_states[i] = HIGH;
+    led_states[i] = LOW;
     digitalWrite(led_pins[i],led_states[i]);
   }
 
@@ -153,19 +146,23 @@ void setup(void)
 
 void stateChange()
 {
-  numOfStateChanges++;
-  if (numOfStateChanges == 2) 
-  {
-    numOfStateChanges = 0;
-    led_states[0] ^= HIGH;
-    digitalWrite(led_pins[0],led_states[0]);
-
-    RF24NetworkHeader header(/*to node*/ base_node);
-    bool ok = network.write(header, led_states, 1);
-    if (ok)
-      printf("ok\n\r");
-    else
-      printf("failed\n\r");
+  static unsigned long last_millis = 0;
+  unsigned long m = millis();
+  if (m - last_millis < 50) { // ignore interrupt: probably a bounce problem
+  }
+  else { // do pushbutton stuff
+    last_millis = m;
+  
+    numOfStateChanges++;
+    //  if (numOfStateChanges == 2) 
+    {
+      numOfStateChanges = 0;
+      led_states[0] ^= HIGH;
+      digitalWrite(led_pins[0],led_states[0]);
+  
+      RF24NetworkHeader header(/*to node*/ base_node);
+      bool ok = network.write(header, led_states, 1);
+    }
   }
 }
 
