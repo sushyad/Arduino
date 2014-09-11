@@ -1,10 +1,3 @@
-/*
-  Example for different sending methods
-  
-  http://code.google.com/p/rc-switch/
-  
-*/
-
 #include <RCSwitch.h>
 
 String commandString;
