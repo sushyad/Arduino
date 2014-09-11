@@ -1,5 +1,25 @@
 #include <RCSwitch.h>
 
+static const unsigned long switchCodes[2][5] =
+  {
+    {
+      // On
+      4281651,
+      4281795,
+      4282115,
+      4283651,
+      4289795
+    },
+    {
+      // Off
+      4281660,
+      4281804,
+      4282124,
+      4283660,
+      4289804
+    }
+  };
+  
 String commandString;
 
 RCSwitch mySwitch = RCSwitch();
@@ -23,26 +43,6 @@ void setup() {
 }
 
 void loop() {
-
-static const unsigned long switchCodes[2][5] =
-  {
-    {
-      // On
-      4281651,
-      4281795,
-      4282115,
-      4283651,
-      4289795
-    },
-    {
-      // Off
-      4281660,
-      4281804,
-      4282124,
-      4283660,
-      4289804
-    }
-  };
 
   delay(5);
   
