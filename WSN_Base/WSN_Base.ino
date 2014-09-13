@@ -14,7 +14,7 @@
 
 RFM69 radio;
 SPIFlash flash(8, 0xEF30); //EF40 for 16mbit windbond chip
-bool promiscuousMode = false; //set to 'true' to sniff all packets on the same network
+bool promiscuousMode = true; //set to 'true' to sniff all packets on the same network
 
 typedef struct
 {
@@ -38,6 +38,9 @@ Payload theData;
 
 unsigned long pulseCounter;
 int power;
+float temperature;
+long vcc;
+
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
@@ -59,6 +62,7 @@ void setup() {
 }
 
 static void recv(byte theNodeID, byte* data, byte len) {
+  Serial.print("Received data from "); Serial.println(theNodeID);
   byte* end = data + len;
   while (data < end)
   {
@@ -81,6 +85,24 @@ static void recv(byte theNodeID, byte* data, byte len) {
           //need_update = true;
           break;
 
+        case KEY_TEMPERATURE:
+          for (byte idx = 1; idx < 5; idx++)
+          {
+            arg = (arg << 8) + (long)data[idx + 1];
+          }
+          temperature = (float) (arg/100.0);
+
+          for (byte idx = 5; idx < 9; idx++)
+          {
+            arg = (arg << 8) + (long)data[idx + 1];
+          }
+          vcc = arg;
+          //memcpy(&temperature, &data[6], 4);
+          Serial.print("["); Serial.print(theNodeID); Serial.print("] ");
+          Serial.print("Temperature: "); Serial.print(temperature); Serial.print(", ");
+          Serial.print("Vcc: "); Serial.println(vcc);
+          break;
+          
         case KEY_ELECTRIC_METER_READING:
           for (byte idx = 1; idx < 5; idx++)
           {
@@ -155,7 +177,7 @@ void loop() {
   if (radio.receiveDone())
   {
     blink(1);
-    //Serial.print('[');Serial.print(radio.SENDERID, DEC);Serial.print("] ");
+    Serial.print('[');Serial.print(radio.SENDERID, DEC);Serial.println("] ");
     //Serial.print(" [RX_RSSI:");Serial.print(radio.readRSSI());Serial.print("]");
     if (promiscuousMode) {
       //Serial.print("to [");Serial.print(radio.TARGETID, DEC);Serial.print("] ");
