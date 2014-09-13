@@ -22,6 +22,7 @@ static void command(byte cmd, long arg, byte len, byte* raw);
 int ledState = LOW;
 volatile unsigned long PulseCounterVolatile = 0; // use volatile for shared variables
 unsigned long PulseCounter = 0;
+unsigned long PulseCounterLastMinute = 0;
 float KWH;
 byte Kh = 3.6;
 int power;
@@ -32,6 +33,7 @@ byte COUNTEREEPROMSLOTS = 10;
 unsigned long COUNTERADDRBASE = 8; //address in EEPROM that points to the first possible slot for a counter
 unsigned long COUNTERADDR = 0;     //address in EEPROM that points to the latest Counter in EEPROM
 byte secondCounter = 0;
+unsigned long powerSecondCounter = 0;
 
 unsigned long TIMESTAMP_pulse_prev = 0;
 unsigned long TIMESTAMP_pulse_curr = 0;
@@ -63,10 +65,10 @@ void setup(void)
   
   //initialize counter from EEPROM
   unsigned long savedCounter = EEPROM_Read_Counter();
-  //unsigned long savedCounter = 0;
+  //unsigned long savedCounter = 4890;
   if (savedCounter <=0) savedCounter = 1; //avoid division by 0
-  PulseCounterVolatile = PulseCounter = savedCounter;
-  attachInterrupt(INPUTPIN, pulseCounter, FALLING);
+  PulseCounterVolatile = PulseCounter = PulseCounterLastMinute = savedCounter;
+  attachInterrupt(INPUTPIN, pulseCounter, RISING);
   Timer1.initialize(XMIT_Interval * 1000L);
   Timer1.attachInterrupt(XMIT);
 
@@ -224,9 +226,15 @@ void pulseCounter(void)
   TIMESTAMP_pulse_prev = TIMESTAMP_pulse_curr;
   TIMESTAMP_pulse_curr = NOW;
   
-  long timeElapsed = TIMESTAMP_pulse_curr - TIMESTAMP_pulse_prev;
+  unsigned long timeElapsed = TIMESTAMP_pulse_curr - TIMESTAMP_pulse_prev;
   
-  power = (3600 * Kh)/((1.0 * timeElapsed)/1000.0);
+  powerSecondCounter += timeElapsed;
+  
+  if (powerSecondCounter >= 60000) {
+    power = (3600.0 * Kh * 1000.0 * (PulseCounter - PulseCounterLastMinute))/(1.0 * powerSecondCounter);
+    PulseCounterLastMinute = PulseCounter;
+    powerSecondCounter = 0;
+  }
   
   if (timeElapsed > KWHthreshold)
     //more than 'KWHthreshold' seconds passed since last pulse... resetting KWH
