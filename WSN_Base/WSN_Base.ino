@@ -3,6 +3,8 @@
 #include <RFM69.h>
 #include <SPI.h>
 #include <SPIFlash.h>
+#include <RCSwitch.h>
+#include <IRremote.h>
 
 #define NODEID      1
 #define NETWORKID   112
@@ -11,6 +13,31 @@
 #define LED         9
 #define SERIAL_BAUD 115200
 #define ACK_TIME    30  // # of ms to wait for an ack
+
+static const unsigned long switchCodes[2][5] =
+  {
+    {
+      // On
+      4281651,
+      4281795,
+      4282115,
+      4283651,
+      4289795
+    },
+    {
+      // Off
+      4281660,
+      4281804,
+      4282124,
+      4283660,
+      4289804
+    }
+  };
+  
+String commandString;
+
+RCSwitch mySwitch = RCSwitch();
+IRsend irsend;
 
 RFM69 radio;
 SPIFlash flash(8, 0xEF30); //EF40 for 16mbit windbond chip
@@ -59,6 +86,18 @@ void setup() {
     Serial.println("SPI Flash Init OK!");
   else
     Serial.println("SPI Flash Init FAIL! (is chip present?)");
+    
+  // Transmitter is connected to Arduino Pin #10  
+  mySwitch.enableTransmit(5);
+
+  // Optional set pulse length.
+  mySwitch.setPulseLength(190);
+  
+  // Optional set protocol (default is 1, will work for most outlets)
+  // mySwitch.setProtocol(2);
+  
+  // Optional set number of transmission repetitions.
+  mySwitch.setRepeatTransmit(15);    
 }
 
 static void recv(byte theNodeID, byte* data, byte len) {
@@ -133,6 +172,7 @@ void loop() {
   //process any serial input
   if (Serial.available() > 0)
   {
+/*
     char input = Serial.read();
     if (input == 'r') //d=dump all register values
       radio.readAllRegs();
@@ -171,6 +211,45 @@ void loop() {
       Serial.print("DeviceID: ");
       word jedecid = flash.readDeviceId();
       Serial.println(jedecid, HEX);
+    }
+*/
+
+    char received = Serial.read();
+    //Serial.print(received);
+    
+    // Process message when new line character is recieved
+    if (received == '\n' || received == '\r') {
+      //Serial.print("\n\r");
+      if (commandString.startsWith("SWITCH")) {
+        int switchNumber = commandString.charAt(6) - '0';
+        String status = commandString.substring(7);
+        int switchState = (status == "ON" ? 0 : 1);
+        Serial.print("Sending command to switch #"); Serial.println(switchNumber);
+        mySwitch.send(switchCodes[switchState][switchNumber - 1], 24);
+      } else if (commandString.startsWith("PROJECTOR")) {
+        if (commandString.endsWith("ON"))
+        {
+          for (int i = 0; i < 2; i++) {
+            irsend.sendNEC(0xC1AA09F6, 32);
+            delay(40);
+          }
+        } else if (commandString.endsWith("OFF"))
+        {
+          for (int i = 0; i < 2; i++) {
+            irsend.sendNEC(0xC1AA09F6, 32);
+            delay(40);
+          }
+          delay(1000);
+          for (int i = 0; i < 2; i++) {
+            irsend.sendNEC(0xC1AA09F6, 32);
+            delay(40);
+          }
+        }
+      }
+  
+      commandString = ""; // Clear recieved buffer
+    } else {
+      commandString += received;
     }
   }
 
