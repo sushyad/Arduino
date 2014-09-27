@@ -7,7 +7,7 @@
 #define  MASTERID     1
 #define  NETWORKID    112
 
-#define  SERIAL_BAUD  115200
+#define  SERIAL_BAUD  9600
 
 #define  USE_RFM12B          0
 #define  USE_RFM69           0
@@ -49,4 +49,25 @@
 
 
 // -----------
+
+static const unsigned long switchCodes[2][5] =
+  {
+    {
+      // On
+      4281651,
+      4281795,
+      4282115,
+      4283651,
+      4289795
+    },
+    {
+      // Off
+      4281660,
+      4281804,
+      4282124,
+      4283660,
+      4289804
+    }
+  };
+  
 
