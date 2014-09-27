@@ -57,11 +57,7 @@ typedef struct
   byte p[20];
 } Payload;
 
-typedef void (*Command)(byte cmd, long arg, byte len, byte* raw);
-
-typedef struct { int nodeId; float kWh; float wlm; long pulseCount;} Payload1;
-
-Payload theData;
+Payload payload;
 
 unsigned long pulseCounter;
 int power;
@@ -245,6 +241,12 @@ void loop() {
             delay(40);
           }
         }
+      } else if (commandString.startsWith("SSR:")) {
+        Serial.println("Sending command to ssr");
+        int c = 0;
+        payload.p[c++]= KEY_RELAY;
+        payload.p[c++] = commandString.substring(4).equals("0") ? 0 : 1;
+        radio.send(109, &payload, 2);
       }
   
       commandString = ""; // Clear recieved buffer
