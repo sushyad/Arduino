@@ -69,9 +69,9 @@ void loop()
     uint8_t from;
     if (manager.recvfromAck(buf, &len, &from))
     {
-      Serial.print("Got message from : ");
+      Serial.print("[");
       Serial.print(from);
-      Serial.print(": ");
+      Serial.print("] ");
       Serial.println((char*)buf);
     }
   }
@@ -80,7 +80,7 @@ void loop()
   if (Serial.available() > 0)
   {
     char received = Serial.read();
-    Serial.print(received);
+    //Serial.print(received);
     
     // Process message when new line character is recieved
     if (received == '\n' || received == '\r') {
@@ -89,7 +89,7 @@ void loop()
         int switchNumber = commandString.charAt(6) - '0';
         String status = commandString.substring(7);
         int switchState = (status == "ON" ? 0 : 1);
-        Serial.print("Sending command to switch #"); Serial.println(switchNumber);
+        //Serial.print("Sending command to switch #"); Serial.println(switchNumber);
         mySwitch.send(switchCodes[switchState][switchNumber - 1], 24);
       } else if (commandString.startsWith("PROJECTOR")) {
         if (commandString.endsWith("ON"))
@@ -115,7 +115,7 @@ void loop()
         int indexOfColon = commandString.indexOf(':');
         String switchNumber = commandString.substring(7, indexOfColon);
         String command = "BTN" + commandString.substring(indexOfColon + 1);
-        Serial.println("Sending command " + command + " to switch #" + switchNumber);
+        //Serial.println("Sending command " + command + " to switch #" + switchNumber);
         command.getBytes(commandBuf, MSG_LEN);
         if (manager.sendtoWait((uint8_t *)commandBuf, sizeof(commandBuf), switchNumber.toInt())) {
           Serial.println("Command " + command + " sent to switch #" + switchNumber);          
