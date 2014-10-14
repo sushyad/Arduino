@@ -4,7 +4,7 @@
 #include <RH_RF69.h>
 #include <SPI.h>
 
-#define NODEID 11
+#define NODEID 31
 #define MASTERID 1
 
 #define LED_RM             15  //digital pin for MIDDLE RED LED
@@ -140,10 +140,10 @@ void takeAction(byte whichButtonIndex, byte whatMode, boolean notifyGateway)
     digitalWrite(SSR, whatMode == ON ? HIGH : LOW);
   if (notifyGateway)
   {
-    if (btnIndex==BTNINDEX_SSR)
+    /*if (whichButtonIndex == BTNINDEX_SSR)
       sprintf((char *)data, "SSR:%s", whatMode==ON ? "ON" : "OFF");
-    else
-      sprintf((char *)data, "BTN%d:%d", whichButtonIndex,whatMode);
+    else*/
+    sprintf((char *)data, "BTN%d:%d", whichButtonIndex, whatMode);
     if (manager.sendtoWait((uint8_t *)data, sizeof(data), MASTERID))
       {DEBUGLN("..OK");}
     else {DEBUGLN("..NOT OK");}
