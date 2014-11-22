@@ -63,16 +63,15 @@ void loop()
         }
       }
     }
-  } else if (currentTime - lastMessageTime > 30000) {
+  } else if (currentTime - lastMessageTime > 10000) {
     boolean dryerOn = isDryerOn();
-    if (!isInitialized) {
-      wasDryerOn = dryerOn;
-      isInitialized = true;
-    }
     
-    if (wasDryerOn != dryerOn) {
+    if (!isInitialized || dryerOn || wasDryerOn != dryerOn) {
+      isInitialized = true;
       reportDryerState(dryerOn);
     }
+
+    wasDryerOn = dryerOn;
     
     lastMessageTime = currentTime;
   }
