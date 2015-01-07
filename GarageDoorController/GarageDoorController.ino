@@ -36,17 +36,10 @@ void setup() {
     digitalWrite(RELAYPIN_RIGHT[0], HIGH);
     digitalWrite(RELAYPIN_RIGHT[1], HIGH);
     
-    // connect to the server
-    client.connect("garageDoorController");
-
-    // publish/subscribe
-    if (client.isConnected()) {
-        client.subscribe("wsn/+/command");
-    }
+    connectToQueue();
 }
 
-void pulseRelay(char relayPin[])
-{
+void pulseRelay(char relayPin[]) {
     digitalWrite(relayPin[0], LOW);
     digitalWrite(relayPin[1], LOW);
     delay(RELAY_PULSE_MS);
@@ -55,6 +48,17 @@ void pulseRelay(char relayPin[])
 }
 
 void loop() {
-    if (client.isConnected())
-        client.loop();
+    if (!client.loop()) {
+        client.disconnect();
+        delay(10*1000L);
+        connectToQueue();
+    }
+}
+
+void connectToQueue() {
+    client.connect("garageDoorController");
+    // publish/subscribe
+    if (client.isConnected()) {
+        client.subscribe("wsn/+/command");
+    }
 }
