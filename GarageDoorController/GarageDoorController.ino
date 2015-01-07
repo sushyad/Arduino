@@ -37,14 +37,10 @@ void setup() {
     digitalWrite(RELAYPIN_RIGHT[1], HIGH);
     
     connectToQueue();
-}
-
-void pulseRelay(char relayPin[]) {
-    digitalWrite(relayPin[0], LOW);
-    digitalWrite(relayPin[1], LOW);
-    delay(RELAY_PULSE_MS);
-    digitalWrite(relayPin[0], HIGH);
-    digitalWrite(relayPin[1], HIGH);
+    
+    //Register REST services
+    Spark.function("garageDoorLeft", toggleGarageDoorLeft);
+    Spark.function("garageDoorRight", toggleGarageDoorRight)    
 }
 
 void loop() {
@@ -55,10 +51,45 @@ void loop() {
     }
 }
 
+void pulseRelay(char relayPin[]) {
+    digitalWrite(relayPin[0], LOW);
+    digitalWrite(relayPin[1], LOW);
+    delay(RELAY_PULSE_MS);
+    digitalWrite(relayPin[0], HIGH);
+    digitalWrite(relayPin[1], HIGH);
+}
+
 void connectToQueue() {
     client.connect("garageDoorController");
     // publish/subscribe
     if (client.isConnected()) {
         client.subscribe("wsn/+/command");
+    }
+}
+
+int toggleGarageDoorLeft(String command)
+{
+    // write to the appropriate pin
+    pulseRelay(RELAYPIN_LEFT);
+    
+    //send a confirmation on MQTT queue
+    sendConfirmation("wsn/garageDoorLeft/confirmation");
+
+    return 1;
+}
+
+int toggleGarageDoorRight(String command)
+{
+    // write to the appropriate pin
+    pulseRelay(RELAYPIN_RIGHT);
+    //send a confirmation on MQTT queue
+    sendConfirmation("wsn/garageDoorRight/confirmation");
+    
+    return 1;
+}
+
+void sendConfirmation(String queue) {
+    if (client.isConnected()) {
+        client.publish(queue, "Toggled");
     }
 }
