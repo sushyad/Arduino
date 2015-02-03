@@ -11,17 +11,17 @@ uint8_t mqttServer[] = { 192, 168, 0, 9 };
 
 class RunBeforeSetup {
 public:
-	RunBeforeSetup() {
-	    for (int index = 0; index < numberOfPins; index++)  {
-    	    PIN_MAP[RELAYPIN_RIGHT[index]].gpio_peripheral->BSRR = PIN_MAP[RELAYPIN_RIGHT[index]].gpio_pin;
-	        pinMode(RELAYPIN_RIGHT[index], OUTPUT);
-	        digitalWrite(RELAYPIN_RIGHT[index], LOW);
-	        
-    	    PIN_MAP[RELAYPIN_LEFT[index]].gpio_peripheral->BSRR = PIN_MAP[RELAYPIN_LEFT[index]].gpio_pin;
-	        pinMode(RELAYPIN_LEFT[index], OUTPUT);
-	        digitalWrite(RELAYPIN_LEFT[index], LOW);
+    RunBeforeSetup() {
+        for (int index = 0; index < numberOfPins; index++)  {
+            PIN_MAP[RELAYPIN_RIGHT[index]].gpio_peripheral->BRR = PIN_MAP[RELAYPIN_RIGHT[index]].gpio_pin;
+            pinMode(RELAYPIN_RIGHT[index], OUTPUT);
+            digitalWrite(RELAYPIN_RIGHT[index], LOW);
+        
+            PIN_MAP[RELAYPIN_LEFT[index]].gpio_peripheral->BRR = PIN_MAP[RELAYPIN_LEFT[index]].gpio_pin;
+            pinMode(RELAYPIN_LEFT[index], OUTPUT);
+            digitalWrite(RELAYPIN_LEFT[index], LOW);
         }
-	}
+    }
 };
 
 RunBeforeSetup runBeforeSetup;
