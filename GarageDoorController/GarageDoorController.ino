@@ -3,25 +3,25 @@
 
 #define RELAY_PULSE_MS            250  //just enough that the opener will pick it up
 
-char RELAYPIN_LEFT[] = {D7, D6};
-char RELAYPIN_RIGHT[] = {D5, D4};
+char RELAYPIN_LEFT[] = {D6};
+char RELAYPIN_RIGHT[] = {D7};
 int numberOfPins = 1;
 
 uint8_t mqttServer[] = { 192, 168, 0, 9 };
 
 class RunBeforeSetup {
 public:
-    RunBeforeSetup() {
-        for (int index = 0; index < numberOfPins; index++)  {
-            PIN_MAP[RELAYPIN_RIGHT[index]].gpio_peripheral->BRR = PIN_MAP[RELAYPIN_RIGHT[index]].gpio_pin;
-            pinMode(RELAYPIN_RIGHT[index], OUTPUT);
-            digitalWrite(RELAYPIN_RIGHT[index], LOW);
-        
-            PIN_MAP[RELAYPIN_LEFT[index]].gpio_peripheral->BRR = PIN_MAP[RELAYPIN_LEFT[index]].gpio_pin;
-            pinMode(RELAYPIN_LEFT[index], OUTPUT);
-            digitalWrite(RELAYPIN_LEFT[index], LOW);
+	RunBeforeSetup() {
+	    for (int index = 0; index < numberOfPins; index++)  {
+    	    PIN_MAP[RELAYPIN_RIGHT[index]].gpio_peripheral->BRR = PIN_MAP[RELAYPIN_RIGHT[index]].gpio_pin;
+	        pinMode(RELAYPIN_RIGHT[index], OUTPUT);
+	        digitalWrite(RELAYPIN_RIGHT[index], LOW);
+	        
+    	    PIN_MAP[RELAYPIN_LEFT[index]].gpio_peripheral->BRR = PIN_MAP[RELAYPIN_LEFT[index]].gpio_pin;
+	        pinMode(RELAYPIN_LEFT[index], OUTPUT);
+	        digitalWrite(RELAYPIN_LEFT[index], LOW);
         }
-    }
+	}
 };
 
 RunBeforeSetup runBeforeSetup;
