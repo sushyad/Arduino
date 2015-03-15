@@ -1,4 +1,4 @@
-#define  NODEID       1
+#define  NODEID       41
 //#define  NODEID       10 // Water heater
 //#define  NODEID       13 // Electric meter pulse counter
 //#define  NODEID       11 // Hot tub
