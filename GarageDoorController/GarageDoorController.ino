@@ -6,7 +6,7 @@
 char RELAYPIN_LEFT[] = {D6};
 char RELAYPIN_RIGHT[] = {D7};
 int numberOfPins = 1;
-uint8_t mqttServer[] = { 192, 168, 0, 9 };
+uint8_t mqttServer[] = { 192, 168, 0, 3 };
 
 void callback(char* topic, byte* payload, unsigned int length);
 
@@ -22,8 +22,10 @@ void callback(char* topicChar, byte* payload, unsigned int length) {
     
     if (topic.equals("wsn/garageDoorLeft/command")) {
         pulseRelay(RELAYPIN_LEFT);
+        client.publish("wsn/garageDoorLeft/response", "ok");
     } else if (topic.equals("wsn/garageDoorRight/command")) {
         pulseRelay(RELAYPIN_RIGHT);
+        client.publish("wsn/garageDoorRight/response", "ok");
     }
 }
 
@@ -49,6 +51,7 @@ void pulseRelay(char relayPin[]) {
     for (int index = 0; index < numberOfPins; index++)  {
         digitalWrite(relayPin[index], LOW);
     }
+    
 }
 
 void loop() {
